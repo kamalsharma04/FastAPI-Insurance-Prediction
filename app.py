@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from typing import Literal , Annotated
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field , computed_field
 import pandas as pd
 import pickle
@@ -10,15 +11,25 @@ with open('model.pkl','rb')as f:
 
 app= FastAPI()
 
+tier_1_cities = ["Mumbai", "Delhi", "Bangalore", "Chennai", "Kolkata", "Hyderabad", "Pune"]
+tier_2_cities = [
+    "Jaipur", "Chandigarh", "Indore", "Lucknow", "Patna", "Ranchi", "Visakhapatnam", "Coimbatore",
+    "Bhopal", "Nagpur", "Vadodara", "Surat", "Rajkot", "Jodhpur", "Raipur", "Amritsar", "Varanasi",
+    "Agra", "Dehradun", "Mysore", "Jabalpur", "Guwahati", "Thiruvananthapuram", "Ludhiana", "Nashik",
+    "Allahabad", "Udaipur", "Aurangabad", "Hubli", "Belgaum", "Salem", "Vijayawada", "Tiruchirappalli",
+    "Bhavnagar", "Gwalior", "Dhanbad", "Bareilly", "Aligarh", "Gaya", "Kozhikode", "Warangal",
+    "Kolhapur", "Bilaspur", "Jalandhar", "Noida", "Guntur", "Asansol", "Siliguri"
+]
+
 # Pydentic model to validate the input data
 class input_data(BaseModel):
     age: Annotated[int,Field(...,gt=0,lt=120, description="Age of the person in years")]
     weight: Annotated[float,Field(...,gt=0,lt=250, description="Weight of the person in kg")]
-    height: Annotated[float,Field(...,gt=0,lt=10, description="Height of the person in cm")]
+    height: Annotated[float,Field(...,gt=0, description="Height of the person in cm")]
     income_lpa: Annotated[float,Field(...,gt=0, description="Income in lakhs per annum")]
     smoker: Annotated[bool,Field(description="Whether the person is a smoker or not")]
     city: Annotated[str,Field(description="City of residence")]
-    occupation:Annotated[Literal['retired','freelancer','student','government_job','business_owner','unemployed','private_job'],
+    occupation: Annotated[Literal['retired','freelancer','student','government_job','business_owner','unemployed','private_job'],
                          Field(...,description="Occupation of the person")]
     
     @computed_field
@@ -36,3 +47,39 @@ class input_data(BaseModel):
             return 'medium'
         else:
             return 'low'
+        
+    @computed_field
+    @property
+    def age_group(self) -> str:
+        if self.age < 25:
+            return 'young'
+        elif self.age < 45:
+            return 'adult'
+        elif self.age < 60 :
+            return 'middle_aged'
+        else:
+            return 'senior'
+        
+    @computed_field
+    @property
+    def city_tier(self) -> int:
+        if self.city in tier_1_cities:
+            return 1
+        elif self.city in tier_2_cities:
+            return 2
+        else:
+            return 3
+        
+@app.post('/predict_insurance_premium')
+def predict_premium(data: input_data):
+    input_df = pd.DataFrame([{
+        'bmi': data.bmi,
+        'age_group': data.age_group,
+        'lifestyle_risk': data.lifestyle_risk,
+        'city_tier': data.city_tier,
+        'income_lpa': data.income_lpa,
+        'occupation': data.occupation
+    }])
+
+    prediction=model.predict(input_df)[0]
+    return JSONResponse(status_code=200, content={'predicted_insurance_premium': prediction})
